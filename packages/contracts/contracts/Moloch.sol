@@ -33,9 +33,9 @@ contract Moloch {
     /***************
     EVENTS
     ***************/
-    event SubmitProposal(uint256 proposalIndex, address indexed delegateKey, address indexed memberAddress, address indexed applicant, uint256 tokenTribute, uint256 sharesRequested);
+    event SubmitProposal(uint256 proposalIndex, address indexed delegateKey, address indexed memberAddress, address indexed applicant, uint256 tokenTribute, uint256 sharesRequested, uint256 interestRecipientMapRequested);
     event SubmitVote(uint256 indexed proposalIndex, address indexed delegateKey, address indexed memberAddress, uint8 uintVote);
-    event ProcessProposal(uint256 indexed proposalIndex, address indexed applicant, address indexed memberAddress, uint256 tokenTribute, uint256 sharesRequested, bool didPass);
+    event ProcessProposal(uint256 indexed proposalIndex, address indexed applicant, address indexed memberAddress, uint256 tokenTribute, uint256 sharesRequested, uint256 interestRecipientMapRequested, bool didPass);
     event Ragequit(address indexed memberAddress, uint256 sharesToBurn);
     event Abort(uint256 indexed proposalIndex, address applicantAddress);
     event UpdateDelegateKey(address indexed memberAddress, address newDelegateKey);
@@ -71,6 +71,7 @@ contract Moloch {
         bool didPass; // true only if the proposal passed
         bool aborted; // true only if applicant calls "abort" fn before end of voting period
         uint256 tokenTribute; // amount of tokens offered as tribute
+        uint256 interestRecipientMapRequested; // suggested beneficiaries for bank interest payments
         string details; // proposal details - could be IPFS hash, plaintext, or JSON
         uint256 maxTotalSharesAtYesVote; // the maximum # of total shares encountered at a yes vote on this proposal
         mapping (address => Vote) votesByMember; // the votes on this proposal by each member
@@ -148,6 +149,7 @@ contract Moloch {
         address applicant,
         uint256 tokenTribute,
         uint256 sharesRequested,
+        uint256 interestRecipientMapRequested,
         string memory details
     )
         public
@@ -188,6 +190,7 @@ contract Moloch {
             didPass: false,
             aborted: false,
             tokenTribute: tokenTribute,
+            interestRecipientMapRequested: interestRecipientMapRequested,
             details: details,
             maxTotalSharesAtYesVote: 0
         });
@@ -196,7 +199,7 @@ contract Moloch {
         proposalQueue.push(proposal);
 
         uint256 proposalIndex = proposalQueue.length.sub(1);
-        emit SubmitProposal(proposalIndex, msg.sender, memberAddress, applicant, tokenTribute, sharesRequested);
+        emit SubmitProposal(proposalIndex, msg.sender, memberAddress, applicant, tokenTribute, sharesRequested, interestRecipientMapRequested);
     }
 
     function submitVote(uint256 proposalIndex, uint8 uintVote) public onlyDelegate {
@@ -289,6 +292,14 @@ contract Moloch {
                 "Moloch::processProposal - token transfer to guild bank failed"
             );
 
+            // if a new set of interest recipients was requested, set from guild bank
+            if (proposal.interestRecipientMapRequested != 0) {
+                require(
+                    guildBank.changeInterestRecipients(proposal.interestRecipientMapRequested),
+                    "Moloch::processProposal - setting new schema for interest recipients failed"
+                );
+            }
+
         // PROPOSAL FAILED OR ABORTED
         } else {
             // return all tokens to the applicant
@@ -316,6 +327,7 @@ contract Moloch {
             proposal.proposer,
             proposal.tokenTribute,
             proposal.sharesRequested,
+            proposal.interestRecipientMapRequested,
             didPass
         );
     }
